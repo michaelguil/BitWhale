@@ -2,77 +2,102 @@
 
 ## 1. 프로젝트 개요 (Overview)
 
-이 프로젝트는 대규모 비트코인 트랜잭션(일명 '고래')을 식별하고, 해당 트랜잭션의 상세 정보를 분석하여 시장의 움직임을 파악하는 것을 목표로 합니다.
+이 프로젝트는 대규모 비트코인 트랜잭션(일명 '고래')을 식별하고, Bitcoin Core RPC를 활용하여 해당 트랜잭션의 상세 정보를 분석함으로써 시장의 움직임을 파악하는 것을 목표로 합니다.
 
-현재 버전(v1.0)은 로컬 데이터를 처리하고 Bitcoin Core RPC와의 통신을 시뮬레이션하여 전체 분석 파이프라인의 개념을 증명(Proof-of-Concept)하는 단계입니다.
+### 1.1. 문제 제기 (Problem Statement)
+암호화폐 시장은 명확한 투자의 기준이 없어 거대 자금의 움직임에 따라 가격이 크게 변동하며, 개인 투자자는 정보의 비대칭성으로 인해 큰 손실을 볼 위험이 항상 존재합니다. 이 프로젝트는 주식 시장에서 사용되는 '대형 투자자 추종' 리스크 관리 전략을 암호화폐 시장에 적용하여, 정보 비대칭성 문제를 해소하는 것을 목표로 시작되었습니다.
 
-## 2. 주요 기능 (Features)
+### 1.2. 주요 목표 (Goals)
+- **고래 투자자 특정:** 트랜잭션 데이터를 기반으로 '고래'로 분류될 수 있는 지갑들을 특정하고 분류합니다.
+- **매매 동향 제공:** 특정된 고래들의 움직임을 실시간으로 추적하여 매매 동향 정보를 제공합니다.
+- **모델 유효성 검증:** 고래 매매 동향을 이용한 모의 투자를 통해 분석 모델의 유효성을 검증합니다.
 
-- **데이터 전처리:** `blockchair.com`에서 다운로드한 대용량 TSV 트랜잭션 데이터를 읽어, 10 BTC 이상의 '고래' 트랜잭션만 필터링하고 CSV 파일로 저장합니다.
-- **RPC 통신 시뮬레이션:** 실제 Bitcoin Core 노드를 실행하지 않고도 프로젝트를 테스트할 수 있도록, RPC 통신을 모방하는 **시뮬레이션 모드**를 지원합니다.
-- **기본 트랜잭션 분석:** 필터링된 트랜잭션의 상세 정보(총 출력 값, 출력 주소 및 금액 등)를 조회하고 간단한 분석 결과를 출력합니다.
-
-## 3. 프로젝트 구조 (Project Structure)
+## 2. 프로젝트 워크플로우 (Project Workflow)
 
 ```
-bitcoin_project/
-├── data/
-│   ├── blockchair_bitcoin_transactions_20240101.tsv  # 샘플 데이터
-│   ├── ...
-│   └── output/
-│       └── processed_transactions.csv              # 전처리된 결과
-├── notebooks/
-│   └── bitcoincore_original.ipynb                  # 초기 아이디어 스케치용 노트북
-├── src/
-│   ├── config.py             # 설정 변수 (경로, 시뮬레이션 모드 등)
-│   ├── data_processing.py    # TSV 데이터 전처리 로직
-│   ├── main.py               # 데이터 전처리 실행 스크립트
-│   ├── rpc_client.py         # Bitcoin Core RPC 클라이언트 (시뮬레이션 기능 포함)
-│   └── analysis.py           # 최종 분석 실행 스크립트
-├── .gitignore                # Git 버전 관리 제외 파일 목록
-├── requirements.txt          # 프로젝트 필요 라이브러리
-└── README.md                 # 프로젝트 설명 파일
+1. 데이터 수집 (Data Ingestion)
+   - Blockchair.com에서 특정 기간의 트랜잭션 데이터를 TSV 형태로 다운로드합니다.
+   - (v2.0) API를 통해 데이터를 실시간으로 수집합니다.
+     ↓
+2. 데이터 전처리 (Preprocessing)
+   - 다운로드한 데이터에서 10 BTC 이상의 거래만 필터링합니다. (src/main.py)
+   - 분석에 필요한 `hash`, `time` 등의 컬럼만 추출하여 CSV 파일로 저장합니다.
+     ↓
+3. 고래 트랜잭션 분석 (Whale Transaction Analysis)
+   - 전처리된 CSV의 트랜잭션 해시를 하나씩 읽어옵니다. (src/analysis.py)
+   - Bitcoin Core RPC 클라이언트를 통해 각 트랜잭션의 상세 정보를 조회합니다. (src/rpc_client.py)
+   - (시뮬레이션 모드) 실제 노드 없이 테스트할 수 있도록 가상 데이터를 반환합니다.
+     ↓
+4. 결과 확인 (Result)
+   - 조회된 트랜잭션의 총 출력 값, 수신 주소, 금액 등 분석된 결과를 터미널에 출력합니다.
 ```
+
+## 3. 분석 모델 (Analysis Model)
+PDF에서 정의한 '고래' 분류 기준은 다음과 같습니다.
+
+### 3.1. 포지션 (Position)
+| 구분 | 정의 |
+| :--- | :--- |
+| **Long** | 진입가 < 청산가 |
+| **Short**| 진입가 > 청산가 |
+
+### 3.2. 거래 규모 (Trade Size)
+| 구분 | 규모 (X = BTC) |
+| :--- | :--- |
+| **Small** | 10 ≤ X < 100 |
+| **Medium**| 100 ≤ X < 500 |
+| **Large** | 500 ≤ X |
+
+### 3.3. 거래 빈도 (Trading Frequency)
+| 구분 | 평균 보유 기간 (μΔ) |
+| :--- | :--- |
+| **Scalper** | μΔ ≤ 1일 |
+| **Short Swing**| 1 < μΔ ≤ 14일 |
+| **Long Swing** | 14 < μΔ ≤ 30일 |
+| **Long Term** | 30일 < μΔ |
+
 
 ## 4. 설치 및 실행 방법 (Setup & How to Run)
 
 ### 4.1. 환경 설정 (Setup)
+```bash
+# 1. 프로젝트 클론
+git clone <repository_url>
+cd bitcoin_project
 
-1.  **프로젝트 클론:**
-    ```bash
-    git clone <repository_url>
-    cd bitcoin_project
-    ```
-2.  **필요 라이브러리 설치:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+# 2. 필요 라이브러리 설치
+pip install -r requirements.txt
+```
 
 ### 4.2. 실행 순서 (How to Run)
+```bash
+# 1. (선택) data/ 폴더에 분석할 .tsv 데이터 준비
+# 이미 샘플 데이터가 포함되어 있습니다.
 
-1.  **데이터 준비:** `blockchair.com` 등에서 트랜잭션 데이터(`.tsv`)를 다운로드하여 `data/` 폴더에 위치시킵니다. (샘플 데이터가 이미 포함되어 있습니다.)
+# 2. 데이터 전처리 실행 (결과: data/output/processed_transactions.csv)
+python -m src.main
 
-2.  **데이터 전처리 실행:**
-    아래 명령어를 실행하여 `data/` 폴더의 TSV 파일들을 전처리하고 `data/output/processed_transactions.csv` 파일을 생성합니다.
-    ```bash
-    python -m src.main
-    ```
-
-3.  **분석 스크립트 실행:**
-    전처리된 데이터를 바탕으로 (시뮬레이션) RPC 통신을 통해 트랜잭션 분석을 시작합니다.
-    ```bash
-    python -m src.analysis
-    ```
+# 3. 분석 스크립트 실행
+python -m src.analysis
+```
 
 ## 5. 시뮬레이션 모드 (Simulation Mode)
+이 프로젝트는 실제 Bitcoin Core 노드 없이도 핵심 로직을 테스트할 수 있도록 시뮬레이션 모드를 제공합니다.
 
-이 프로젝트는 실제 Bitcoin Core 노드 없이도 핵심 로직을 실행하고 테스트할 수 있도록 시뮬레이션 모드를 제공합니다.
+- **위치:** `src/config.py` 파일 내 `SIMULATION_MODE` 변수
+- `SIMULATION_MODE = True` (기본값): 실제 RPC 서버에 연결하지 않고, `src/rpc_client.py`에 미리 정의된 가상의 샘플 데이터를 반환합니다.
+- `SIMULATION_MODE = False`: 실제 노드에 연결을 시도합니다. 이 경우, `config.py`의 RPC 관련 변수들을 실제 환경에 맞게 수정해야 합니다.
 
--   **위치:** `src/config.py` 파일 내 `SIMULATION_MODE` 변수
--   `SIMULATION_MODE = True` (기본값): 실제 RPC 서버에 연결하지 않고, `src/rpc_client.py`에 미리 정의된 가상의 샘플 데이터를 반환합니다.
--   `SIMULATION_MODE = False`: 실제 Bitcoin Core 노드에 연결을 시도합니다. 이 경우, `config.py` 파일의 `RPC_HOST`, `RPC_PORT`, `RPC_USER`, `RPC_PASSWORD`를 실제 환경에 맞게 수정해야 합니다.
+## 6. 결론 및 한계점 (Conclusion & Limitations)
 
-## 6. 향후 계획 (Future Work - v2.0)
+### 6.1. 결론
+- 이 프로젝트는 대형 투자자의 매매 동향을 이용한 리스크 관리가 암호화폐 시장에서도 적용 가능함을 시사합니다.
+- 개인 투자자에게 투자 기준을 제공하여 정보 비대칭성 해소에 기여할 수 있습니다.
 
-- **Blockchair API 연동:** 수동으로 데이터를 다운로드하는 대신, GitHub 학생 개발자 팩으로 제공되는 Blockchair API를 활용하여 데이터를 실시간으로 가져오는 기능을 구현할 예정입니다.
-- **고급 분석 기능:** 단순 정보 조회을 넘어, 트랜잭션 흐름 추적, 고래 지갑 유형 분류 등 더 심도 있는 분석 모델을 추가할 계획입니다.
+### 6.2. 한계점
+- **데이터 범위:** 프로젝트에서는 특정 기간(약 1년 4개월)의 트랜잭션 데이터만 수집하여 분석에 한계가 있습니다.
+- **모의투자 기간:** 모델 검증을 위한 모의투자 기간이 짧아 통계적 신뢰성을 확보하기 어렵습니다.
+
+## 7. 향후 계획 (Future Work - v2.0)
+- **Blockchair API 연동:** 수동으로 데이터를 다운로드하는 대신, API를 활용하여 데이터를 실시간으로 가져오는 기능을 구현합니다.
+- **고급 분석 기능:** 단순 정보 조회를 넘어, 트랜잭션 흐름 추적, 고래 지갑 유형 분류 등 더 심도 있는 분석 모델을 추가합니다.
